@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn as nn
 import cv2
@@ -52,6 +53,14 @@ print("✅ Model loaded with classes:", classes)
 # ------------------
 app = Flask(__name__)
 
+# ✅ ROOT ROUTE (IMPORTANT)
+@app.route("/")
+def home():
+    return "Emotion AI Server is running 🚀"
+
+# ------------------
+# PREDICT ROUTE
+# ------------------
 @app.route("/predict", methods=["POST"])
 def predict():
     if "image" not in request.files:
@@ -84,7 +93,8 @@ def predict():
 
 
 # ------------------
-# RUN SERVER
+# RUN SERVER (RENDER COMPATIBLE)
 # ------------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
