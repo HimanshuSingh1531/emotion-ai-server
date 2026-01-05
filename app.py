@@ -4,6 +4,8 @@ import torch.nn as nn
 import cv2
 import numpy as np
 from flask import Flask, request, jsonify
+from PIL import Image
+import io
 
 # ------------------
 # MODEL DEFINITION
@@ -49,11 +51,18 @@ model.eval()
 print("✅ Model loaded with classes:", classes)
 
 # ------------------
+# FACE DETECTOR (ADDED)
+# ------------------
+face_cascade = cv2.CascadeClassifier(
+    "haarcascade_frontalface_default.xml"
+)
+
+# ------------------
 # FLASK APP
 # ------------------
 app = Flask(__name__)
 
-# ✅ ROOT ROUTE (IMPORTANT)
+
 @app.route("/")
 def home():
     return "Emotion AI Server is running 🚀"
@@ -69,14 +78,26 @@ def predict():
     file = request.files["image"]
     img_bytes = file.read()
 
-    # Decode image
-    np_img = np.frombuffer(img_bytes, np.uint8)
-    img = cv2.imdecode(np_img, cv2.IMREAD_GRAYSCALE)
+    # 🔥 ANDROID IMAGE FIX (ADDED)
+    image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+    img = np.array(image)
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
 
-    if img is None:
-        return jsonify({"error": "Invalid image"}), 400
+    # 🔥 FACE DETECTION (ADDED)
+    faces = face_cascade.detectMultiScale(
+        gray,
+        scaleFactor=1.1,
+        minNeighbors=5,
+        minSize=(60, 60)
+    )
 
-    # Preprocess
+    if len(faces) == 0:
+        return jsonify({"emotion": "neutral"})
+
+    x, y, w, h = faces[0]
+    img = gray[y:y+h, x:x+w]
+
+    # SAME PREPROCESSING AS TRAINING
     img = cv2.resize(img, (48, 48))
     img = img / 255.0
     img = torch.tensor(img, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
@@ -84,11 +105,17 @@ def predict():
     # Predict
     with torch.no_grad():
         outputs = model(img)
-        _, predicted = torch.max(outputs, 1)
+        probs = torch.softmax(outputs, dim=1)
+        confidence, predicted = torch.max(probs, 1)
+
+    if confidence.item() < 0.6:
+        emotion = "neutral"
+    else:
         emotion = classes[predicted.item()]
 
     return jsonify({
-        "emotion": emotion
+        "emotion": emotion,
+        "confidence": float(confidence.item())
     })
 
 
